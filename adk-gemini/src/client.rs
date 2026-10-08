@@ -19,7 +19,10 @@ use google_cloud_aiplatform_v1::client::PredictionService;
 #[cfg(feature = "vertex")]
 use google_cloud_auth::credentials::{self, Credentials};
 use mime::Mime;
-use reqwest::{ClientBuilder, header::InvalidHeaderValue};
+use reqwest::{
+    ClientBuilder,
+    header::{HeaderMap, HeaderValue, InvalidHeaderValue},
+};
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::{
@@ -1031,7 +1034,11 @@ impl GeminiBuilder {
         self
     }
 
-    /// Set a custom HTTP client builder.
+    /// Set a custom HTTP client builder for the AI Studio backend.
+    ///
+    /// Settings such as proxies, timeouts and default headers apply to every Studio
+    /// request. The redirect policy is always replaced with
+    /// [`reqwest::redirect::Policy::none`] so the API key is never re-sent to another host.
     pub fn with_http_client(mut self, client_builder: ClientBuilder) -> Self {
         self.client_builder = client_builder;
         self
@@ -1152,8 +1159,20 @@ impl GeminiBuilder {
             return MissingApiKeySnafu.fail();
         }
 
+        let mut key = HeaderValue::from_str(&api_key).context(InvalidApiKeySnafu)?;
+        key.set_sensitive(true);
+        let mut headers = HeaderMap::new();
+        headers.insert("x-goog-api-key", key);
+        // A redirect would re-send `x-goog-api-key` to the target host, so the Studio
+        // client never follows one, whatever the configured builder says.
+        let client = self
+            .client_builder
+            .default_headers(headers)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .context(PerformRequestNewSnafu)?;
         let studio =
-            backend::studio::StudioBackend::new(&api_key, self.model.clone(), self.base_url)?;
+            backend::studio::StudioBackend::with_client(client, self.model.clone(), self.base_url);
 
         Ok(Gemini { client: Arc::new(GeminiClient::with_studio(self.model, studio)) })
     }
@@ -1816,5 +1835,37 @@ mod client_tests {
             location: "europe-west4".to_string(),
         };
         assert_eq!(config.endpoint(), "https://europe-west4-aiplatform.googleapis.com");
+    }
+}
+
+#[cfg(test)]
+mod builder_tests {
+    use super::GeminiBuilder;
+    use wiremock::matchers::any;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn studio_builder_does_not_follow_redirects() {
+        let target = MockServer::start().await;
+        Mock::given(any()).respond_with(ResponseTemplate::new(200)).expect(0).mount(&target).await;
+        let origin = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(
+                ResponseTemplate::new(307)
+                    .insert_header("location", format!("{}/landing", target.uri())),
+            )
+            .expect(1)
+            .mount(&origin)
+            .await;
+        let client = GeminiBuilder::new("test-key")
+            .with_base_url(format!("{}/v1beta/", origin.uri()).parse().unwrap())
+            .with_http_client(reqwest::ClientBuilder::new())
+            .build()
+            .unwrap();
+
+        let result = client.generate_content().with_user_message("hello").execute().await;
+
+        assert!(result.is_err());
+        assert_eq!(target.received_requests().await.unwrap().len(), 0);
     }
 }

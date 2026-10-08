@@ -61,6 +61,8 @@ export DEEPSEEK_API_KEY="your-key"    # DeepSeek
 export GROQ_API_KEY="your-key"        # Groq
 ```
 
+For OpenCode Go and Zen, enable `opencode` and follow the [OpenCode configuration guide](opencode.md).
+
 ## Schema Normalization
 
 Each provider automatically normalizes MCP tool schemas at request time. You don't need to do anything — it works transparently. But here's what happens under the hood:
@@ -682,6 +684,7 @@ The generated projects are compiled in CI by `scripts/check-cargo-adk-templates.
 
 ## Related
 
+- [OpenCode Go and Zen](./opencode.md) - Per-model routing for OpenCode services
 - [Ollama (Local)](./ollama.md) - Run models locally with Ollama
 - [Local Models (mistral.rs)](./mistralrs.md) - Native Rust inference
 - [LlmAgent](../agents/llm-agent.md) - Using models with agents

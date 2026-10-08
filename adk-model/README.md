@@ -12,6 +12,7 @@ LLM model integrations for Rust Agent Development Kit (ADK-Rust) with Gemini, Op
 
 - **Gemini** - Google's Gemini models (3 Pro, 3 Flash, 2.5 Pro, 2.5 Flash, etc.)
 - **OpenAI** - GPT-5.1, GPT-5, GPT-5 Mini, GPT-4o (legacy)
+- **OpenCode Go and Zen** - Per-model API routing with stable conversation headers (`opencode` feature)
 - **OpenRouter** - Native chat, responses, routing, discovery, and credits APIs
 - **xAI** - Grok models through the OpenAI-compatible API
 - **Anthropic** - Claude Opus 4.8, Claude Opus 4.7, Claude Sonnet 4.6, Claude Haiku 4.5
@@ -107,6 +108,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+### OpenCode
+
+Enable the `opencode` feature. The client picks Chat Completions, Responses, Anthropic Messages, or
+Gemini `generateContent` from the model ID and sends the application's `User-Agent` and
+`x-opencode-session` headers with every request.
+
+```rust
+use adk_model::opencode::{OpenCodeClient, OpenCodeConfig, OpenCodeService};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let api_key = std::env::var("OPENCODE_API_KEY")?;
+    let model = OpenCodeClient::new(
+        OpenCodeConfig::new(OpenCodeService::Go, api_key, "deepseek-v4.1-flash")
+            .with_user_agent("my-coding-agent/1.0")
+            .with_session_id("conversation-42"),
+    )?;
+    println!("{:?}", model.api());
+    Ok(())
+}
+```
+
+See the [OpenCode guide](https://github.com/zavora-ai/adk-rust/blob/main/docs/official_docs/models/opencode.md)
+for the routing table and configuration options.
 
 ### OpenRouter
 
